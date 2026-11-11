@@ -1,20 +1,92 @@
 # RiskWatch: Real-Time Multi-Disease Risk Prediction System
 
-Big Data Architecture final project. RiskWatch streams patient health records through Kafka, scores every patient for **Diabetes, Heart Disease and Stroke** risk using Spark MLlib models, stores the results in MongoDB, and shows them on a live Streamlit dashboard.
+RiskWatch is an end-to-end big data pipeline that streams patient health records through Kafka, scores each patient for **Diabetes, Heart Disease and Stroke** risk in real time using Spark MLlib, stores the predictions in MongoDB, and displays them on a live dashboard.
+
+I designed and built the entire system as my final project for Big Data Architecture at Rajalakshmi Engineering College, Chennai.
+
+![Apache Spark](https://img.shields.io/badge/Apache%20Spark-3.5-E25A1C?logo=apachespark&logoColor=white)
+![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-3.8-231F20?logo=apachekafka&logoColor=white)
+![Hadoop](https://img.shields.io/badge/HDFS-Hadoop%203.2-66CCFF?logo=apachehadoop&logoColor=black)
+![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)
+
+<!-- Add a dashboard screenshot: ![RiskWatch Dashboard](docs/dashboard.png) -->
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+- [How It Works](#how-it-works)
+- [Tech Stack](#tech-stack)
+- [Dataset](#dataset)
+- [Machine Learning Models](#machine-learning-models)
+- [Risk Classification](#risk-classification)
+- [Dashboard](#dashboard)
+- [Design Decisions](#design-decisions)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Limitations and Future Work](#limitations-and-future-work)
+- [Author](#author)
+
+---
+
+## Overview
+
+Most health risk tools check one disease at a time using a static form. In a real screening setting, records arrive continuously and the people who need attention first are the ones that matter most.
+
+RiskWatch handles this as a streaming problem. Every incoming patient record is scored for three diseases at once, assigned a risk level, and shown on a dashboard within seconds. High-risk patients trigger alerts so they can be prioritised.
+
+The project covers the full data lifecycle: raw data ingestion, distributed cleaning and training, real-time scoring, persistent storage, and visualisation, all running in containers on a single laptop.
+
+## Key Features
+
+- **Multi-disease scoring:** one patient record produces three independent risk predictions (Diabetes, Heart Disease, Stroke)
+- **Real-time processing:** Kafka and Spark Structured Streaming score patients as they arrive
+- **Distributed batch training:** data cleaning and model training run on Spark, with data and models stored in HDFS
+- **Three-level risk classification:** Low, Medium and High, with alerts for high-risk patients
+- **Live dashboard:** risk distribution, alerts over time, latest high-risk patients and a live patient feed
+- **One-command deployment:** HDFS, Kafka, MongoDB and the application all start with Docker Compose
+- **Runs on a laptop:** only free, open source tools, with a low-RAM mode for 8 GB machines
+
+## System Architecture
+
+RiskWatch follows the **Lambda architecture** pattern with three layers.
 
 ```
                  BATCH LAYER (run once)
- CSV dataset ──► HDFS ──► Spark (clean) ──► Spark MLlib ──► 3 models saved in HDFS
-                                                               │
-                 SPEED LAYER (real time)                       ▼
- producer.py ──► Kafka topic "patients" ──► Spark Structured Streaming
+ CSV dataset --> HDFS --> Spark (clean) --> Spark MLlib --> 3 models saved in HDFS
+                                                               |
+                 SPEED LAYER (real time)                       v
+ producer.py --> Kafka topic "patients" --> Spark Structured Streaming
                                            (apply 3 models, assign risk level)
-                                                               │
-                 SERVING LAYER                                 ▼
-                       Streamlit dashboard ◄── MongoDB (predictions)
+                                                               |
+                 SERVING LAYER                                 v
+                       Streamlit dashboard <-- MongoDB (predictions)
 ```
 
-## Tech stack
+| Layer | Purpose | Components |
+|---|---|---|
+| Batch | Clean historical data and train models | HDFS, Spark, Spark MLlib |
+| Speed | Score new patients as they arrive | Kafka, Spark Structured Streaming |
+| Serving | Store and display results | MongoDB, Streamlit |
+
+## How It Works
+
+**1. Batch layer (run once)**
+The raw CSV is uploaded to HDFS. A Spark job removes nulls and duplicates, checks disease prevalence, splits the data 80/20 into train and test sets, and saves both as Parquet. A second job trains one Random Forest model per disease, evaluates it on the test set, and saves the three models back to HDFS.
+
+**2. Speed layer (continuous)**
+A Python producer publishes patient records to the Kafka topic `patients` at a configurable rate. A Spark Structured Streaming job reads from the topic, loads the three saved models, scores each patient for every disease, and assigns a risk level based on predicted probability. High-risk patients are printed as alerts in the console.
+
+**3. Serving layer**
+Each scored patient is written to MongoDB. The Streamlit dashboard reads from MongoDB and refreshes every few seconds to show live results.
+
+## Tech Stack
 
 | Layer | Tool |
 |---|---|
@@ -26,208 +98,117 @@ Big Data Architecture final project. RiskWatch streams patient health records th
 | Database | MongoDB 7 |
 | Dashboard | Streamlit |
 | Deployment | Docker Compose |
+| Language | Python 3.11 |
 
-Everything is free, open source, and runs on your own laptop.
+## Dataset
 
-## Project structure
+[Diabetes Health Indicators Dataset](https://www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset) by Alex Teboul, based on the CDC Behavioral Risk Factor Surveillance System (BRFSS 2015) survey.
+
+- **Size:** 253,680 records
+- **Inputs:** health and lifestyle indicators such as blood pressure, cholesterol, BMI, smoking, physical activity, general health, age, education and income
+- **Targets:** Diabetes, Heart Disease or Attack, and Stroke
+
+The dataset is not included in this repository. Download `diabetes_binary_health_indicators_BRFSS2015.csv` from Kaggle and place it in the `data/` folder. A synthetic data generator with the same columns is included for quick testing.
+
+## Machine Learning Models
+
+One **Random Forest classifier** is trained per disease using Spark MLlib, so each disease gets its own model and its own probability output.
+
+| Disease | AUC | Accuracy | Precision | Recall |
+|---|---|---|---|---|
+| Diabetes | TBD | TBD | TBD | TBD |
+| Heart Disease | TBD | TBD | TBD | TBD |
+| Stroke | TBD | TBD | TBD | TBD |
+
+Evaluation is done on a held-out 20% test set. Training also prints the top contributing features for each disease.
+
+## Risk Classification
+
+The model's predicted probability is converted into a simple level that is easy to act on.
+
+| Probability | Risk Level |
+|---|---|
+| Below 30% | Low |
+| 30% to 60% | Medium |
+| 60% and above | High (alert) |
+
+## Dashboard
+
+The Streamlit dashboard refreshes every few seconds and shows:
+
+- Total patients scored and number of alerts
+- Risk level distribution for each disease
+- Alerts over time
+- Latest high-risk patients
+- Live patient feed
+- Model performance summary
+
+## Design Decisions
+
+- **Lambda architecture:** training is expensive and done once in batch, while scoring is cheap and done continuously in the speed layer. Keeping them separate lets each scale on its own.
+- **Spark MLlib over scikit-learn:** models are trained and applied inside Spark, so the same models score streaming data with no format conversion.
+- **Kafka as the ingestion layer:** it decouples the data source from processing, so the producer can be replaced by a real hospital feed without changing the pipeline.
+- **MongoDB for predictions:** a document store fits semi-structured prediction records and is easy for the dashboard to query.
+- **Shared scoring module:** `scoring.py` holds the prediction logic in one place so the batch and streaming code stay consistent.
+- **Docker Compose:** the full stack is reproducible with one command instead of installing Hadoop, Kafka and Spark manually.
+- **Configurable storage:** a low-RAM mode swaps HDFS for local disk so the project still runs on 8 GB laptops.
+
+## Project Structure
 
 ```
 riskwatch/
-├── docker-compose.yml        # HDFS, Kafka, MongoDB and the app container
-├── Dockerfile                # Python 3.11 + Java + PySpark
+├── docker-compose.yml          # HDFS, Kafka, MongoDB and app container
+├── Dockerfile                  # Python 3.11 + Java + PySpark
 ├── requirements.txt
-├── config.py                 # all settings in one place
+├── config.py                   # all settings in one place
 ├── data/
-│   └── generate_sample_data.py   # backup: synthetic data with the same columns
+│   └── generate_sample_data.py # synthetic data with the same columns
 ├── batch/
-│   ├── preprocess.py         # ingest to HDFS, clean, split
-│   └── train_models.py       # train + evaluate 3 models
+│   ├── preprocess.py           # ingest to HDFS, clean, split
+│   └── train_models.py         # train and evaluate 3 models
 ├── streaming/
-│   ├── producer.py           # sends patients to Kafka
-│   ├── scoring.py            # shared prediction logic
-│   └── stream_predict.py     # Spark Streaming -> MongoDB
+│   ├── producer.py             # sends patients to Kafka
+│   ├── scoring.py              # shared prediction logic
+│   └── stream_predict.py       # Spark Streaming to MongoDB
 ├── dashboard/
-│   └── app.py                # live dashboard
+│   └── app.py                  # live dashboard
 └── docs/
     └── RiskWatch_Explanation.pdf
 ```
 
----
+## Quick Start
 
-## Requirements
+Requires Docker Desktop and 8 GB RAM (16 GB recommended). Place the dataset CSV in `data/` first.
 
-- **Docker Desktop** (Windows, Mac or Linux)
-- **8 GB RAM** minimum, 16 GB recommended
-- **Fast internet for the first build only** (about 400 MB download). A phone hotspot works well if your Wi-Fi is slow.
-
-You do **not** need to install Python, Java, Spark, Hadoop or Kafka yourself. Docker handles all of it.
-
----
-
-## Part A: One-time setup
-
-### Step 1: Install Docker Desktop
-1. Download it from **docker.com/products/docker-desktop** and install with default options. Keep **"Use WSL 2"** ticked on Windows.
-2. Restart the laptop.
-3. Open Docker Desktop and wait until it shows **"Engine running"**.
-
-### Step 2: Set Docker memory (Windows, only for 8 GB RAM laptops)
-Docker on Windows uses WSL 2, so memory is set in a file, not in Docker Desktop.
-
-Press **Win + R**, type `notepad %UserProfile%\.wslconfig`, press Enter, paste this and save:
-```ini
-[wsl2]
-memory=5GB
-processors=4
-swap=4GB
-```
-Then run `wsl --shutdown` in PowerShell and reopen Docker Desktop. Skip this step with 16 GB RAM.
-
-### Step 3: Add the dataset
-1. On Kaggle, search **"Diabetes Health Indicators Dataset"** (by Alex Teboul) and download it.
-2. Unzip it. It contains 3 CSV files. Use only **`diabetes_binary_health_indicators_BRFSS2015.csv`** (the large one, about 22 MB, 253,680 rows). Do not use the "5050split" file.
-3. Copy it into the `data/` folder.
-
-No Kaggle account yet? You can test with synthetic data that has the same columns (after Step 4):
 ```bash
-docker compose exec app python data/generate_sample_data.py
-```
-Use the real dataset for your final results.
-
-### Step 4: Build and start all services
-Open PowerShell (or the VS Code terminal) inside the `riskwatch` folder:
-```bash
+git clone https://github.com/DhanusriRS2006/riskwatch.git
+cd riskwatch
 docker compose up -d --build
-```
-The first build downloads PySpark (317 MB). The screen may look stuck on `Downloading pyspark...` because there is no progress bar. Check Task Manager → Performance → Wi-Fi to confirm it is downloading.
 
-Check that everything is up:
-```bash
-docker compose ps
-```
-All 5 containers should be running: `namenode`, `datanode`, `kafka`, `mongo`, `riskwatch-app`.
-
-Open **http://localhost:9870** to see the HDFS web UI. It should show **Live Nodes: 1**.
-
-**Wait about 1 minute** after starting so HDFS can finish booting.
-
-### Step 5: Preprocess the data (batch layer)
-```bash
+# Batch layer (run once)
 docker compose exec app python batch/preprocess.py
-```
-Uploads the CSV into HDFS, removes nulls and duplicates, shows disease prevalence, splits 80/20 into train/test, and saves them as Parquet in HDFS.
-
-Check in the HDFS UI: **Utilities → Browse the file system → /riskwatch**.
-
-### Step 6: Train the 3 models
-```bash
 docker compose exec app python batch/train_models.py
-```
-Trains a Random Forest for each disease (3 to 8 minutes), prints AUC, Accuracy, Precision, Recall and top features, and saves the models to HDFS. Take a screenshot of this output for your report.
 
-Part A is done. Data and models stay saved after shutdown.
-
----
-
-## Part B: Run the live system
-
-Open **3 terminals** inside the `riskwatch` folder. In VS Code, use the split terminal button.
-
-### Step 7: Terminal 1, start the streaming job
-```bash
+# Live system (run in 3 separate terminals)
 docker compose exec app python streaming/stream_predict.py
-```
-It creates the Kafka topic automatically, loads the 3 models, and downloads the Spark-Kafka connector on the first run (about 1 minute). Wait until you see:
-```
-Streaming started. Listening on Kafka topic 'patients'. Ctrl+C to stop.
-```
-
-### Step 8: Terminal 2, send patients
-```bash
 docker compose exec app python streaming/producer.py --rate 2
-```
-`--rate 2` sends 2 patients per second. Terminal 1 starts printing batches and **ALERT** lines for high-risk patients:
-```
-[batch 76] scored 4 patient(s), 1 high-risk alert(s)
-   ALERT P-88578: diabetes=High, heart=High, stroke=High
-```
-
-### Step 9: Terminal 3, start the dashboard
-```bash
 docker compose exec app streamlit run dashboard/app.py --server.address 0.0.0.0
 ```
-Then **open http://localhost:8501 in your browser yourself**. It will not open automatically because Streamlit runs inside Docker, and the `http://0.0.0.0:8501` link it prints does not work in a Windows browser.
 
-The dashboard refreshes every few seconds and shows:
-- total patients scored and number of alerts
-- risk level distribution per disease
-- alerts over time
-- latest high-risk patients
-- live patient feed and model performance
+Open http://localhost:8501 to see the dashboard.
 
-While a Spark job runs, the Spark UI is at **http://localhost:4040**.
+## Limitations and Future Work
 
-### Step 10: Stop everything
-Press `Ctrl + C` in each terminal, then:
-```bash
-docker compose down        # stop (keeps data and models)
-docker compose down -v     # stop and delete ALL stored data (you must redo Steps 5 and 6)
-```
+- The data comes from a public health survey, not clinical tests, so RiskWatch is a screening and prioritisation tool and not a diagnosis tool.
+- The producer replays dataset records to simulate a live feed. A real deployment would connect to hospital or wearable data sources.
+- Possible next steps: email or SMS alerts for high-risk patients, model explainability with feature contributions per patient, scaling Kafka and Spark to a multi-node cluster, and adding more diseases.
 
----
+## Author
 
-## Next time you run it
-Skip Part A. Just run:
-```bash
-docker compose up -d
-```
-Wait 1 minute, then do Steps 7, 8 and 9.
+**Dhanusri R S**
+B.Tech Artificial Intelligence and Data Science, Rajalakshmi Engineering College, Chennai
+[GitHub](https://github.com/DhanusriRS2006)
 
----
+## Disclaimer
 
-## Normal messages (not errors)
-
-| Message | Meaning |
-|---|---|
-| Long Python/Java error after pressing `Ctrl + C` | Spark always prints this when stopped |
-| `WARN DAGScheduler: Broadcasting large task binary` | The models are a few MB, nothing wrong |
-| `WARN ... falling behind` | Your laptop is busy, it catches up |
-| `project has been loaded without an explicit name` | Harmless Docker Compose warning |
-| VS Code: `Import "pyspark" could not be resolved` | PySpark is installed inside Docker, not on Windows. The code still runs |
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| Build fails with `Read timed out` | Slow internet. Run `docker compose up -d --build` again (downloads resume), or use a phone hotspot |
-| `Name node is in safe mode` | Wait 1 minute and retry, or run `docker exec namenode hdfs dfsadmin -safemode leave` |
-| `Could not connect to Kafka` | Wait 30 seconds after `docker compose up`, then retry |
-| `Path does not exist ... .csv` | The CSV must be in `data/` with the exact name above |
-| `Path does not exist ... models` | Run Steps 5 and 6 before Step 7 |
-| Dashboard says "Waiting for data" | Make sure Terminal 1 (stream) and Terminal 2 (producer) are both running |
-| Browser shows "site can't be reached" | Use `http://localhost:8501`, not `0.0.0.0` |
-| Datanode keeps restarting | Run `docker compose down -v`, then `docker compose up -d`, then redo Steps 5 and 6 |
-| Port 8501 / 9092 already in use | Close the other app using it, or change the port in `docker-compose.yml` |
-| Very slow / out of memory | Close Chrome tabs, increase WSL memory (Step 2), or use the Low-RAM option below |
-
-## Low-RAM option (8 GB laptops)
-If HDFS makes your laptop too slow, store files on local disk instead. Everything else stays the same:
-```bash
-docker compose stop namenode datanode
-docker compose exec -e STORAGE_BASE=file:///app/storage app python batch/preprocess.py
-docker compose exec -e STORAGE_BASE=file:///app/storage app python batch/train_models.py
-docker compose exec -e STORAGE_BASE=file:///app/storage app python streaming/stream_predict.py
-```
-Producer and dashboard commands do not change. In your report, mention HDFS as the production storage layer.
-
----
-
-## Risk levels
-| Probability | Level |
-|---|---|
-| below 30% | Low |
-| 30% to 60% | Medium |
-| 60% and above | High (alert) |
-
-## Note
-The dataset is from a public health survey (CDC BRFSS 2015), not clinical tests. RiskWatch is a screening and prioritisation tool, not a diagnosis tool.
+RiskWatch is an academic project built for learning. It is not a medical device and must not be used for real diagnosis or treatment decisions.
